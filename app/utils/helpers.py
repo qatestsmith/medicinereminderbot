@@ -5,6 +5,7 @@ import pytz
 from datetime import datetime
 import json
 import os
+from .encryption import SecureStorage
 
 def load_config(config_path: str = "config/settings.json") -> dict:
     try:
@@ -15,45 +16,79 @@ def load_config(config_path: str = "config/settings.json") -> dict:
         return {}
 
 def load_bot_token(token_path: str = "config/bot_token.txt") -> Optional[str]:
+    """Load bot token from encrypted or plain text file"""
     try:
-        with open(token_path, 'r', encoding='utf-8') as f:
-            token = f.read().strip()
-            return token if token and not token.startswith('#') else None
+        # First try encrypted file
+        encrypted_path = token_path + ".enc"
+        if os.path.exists(encrypted_path):
+            storage = SecureStorage()
+            token = storage.load_encrypted_text(encrypted_path)
+            if token:
+                return token if not token.startswith('#') else None
+        
+        # Fallback to plain text file (for backward compatibility)
+        if os.path.exists(token_path):
+            with open(token_path, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+                return token if token and not token.startswith('#') else None
+        
+        logging.error(f"Bot token not found in {encrypted_path} or {token_path}")
+        return None
+        
     except Exception as e:
         logging.error(f"Error loading bot token: {e}")
         return None
 
 def load_allowed_users(users_path: str = "config/allowed_users.txt") -> dict:
     """
-    Load allowed users from file. Returns dict with user_ids and usernames.
+    Load allowed users from encrypted or plain text file. 
+    Returns dict with user_ids and usernames.
     Format: {"user_ids": [123, 456], "usernames": ["user1", "user2"]}
     """
     try:
-        with open(users_path, 'r', encoding='utf-8') as f:
-            user_ids = []
-            usernames = []
-            
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    # Try to parse as user ID (numeric)
-                    try:
-                        user_id = int(line)
-                        user_ids.append(user_id)
-                    except ValueError:
-                        # If not numeric, treat as username
-                        if line.startswith('@'):
-                            username = line[1:]  # Remove @ prefix
-                        else:
-                            username = line
-                        
-                        # Validate username format (Telegram usernames are 5-32 chars, alphanumeric + underscore)
-                        if 5 <= len(username) <= 32 and username.replace('_', '').isalnum():
-                            usernames.append(username.lower())
-                        else:
-                            logging.warning(f"Invalid username format on line {line_num}: {line}")
-            
-            return {"user_ids": user_ids, "usernames": usernames}
+        content = None
+        
+        # First try encrypted file
+        encrypted_path = users_path + ".enc"
+        if os.path.exists(encrypted_path):
+            storage = SecureStorage()
+            content = storage.load_encrypted_text(encrypted_path)
+        
+        # Fallback to plain text file (for backward compatibility)
+        elif os.path.exists(users_path):
+            with open(users_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        
+        if not content:
+            logging.warning(f"No users file found at {encrypted_path} or {users_path}")
+            return {"user_ids": [], "usernames": []}
+        
+        # Parse content
+        user_ids = []
+        usernames = []
+        
+        for line_num, line in enumerate(content.split('\n'), 1):
+            line = line.strip()
+            if line and not line.startswith('#'):
+                # Try to parse as user ID (numeric)
+                try:
+                    user_id = int(line)
+                    user_ids.append(user_id)
+                except ValueError:
+                    # If not numeric, treat as username
+                    if line.startswith('@'):
+                        username = line[1:]  # Remove @ prefix
+                    else:
+                        username = line
+                    
+                    # Validate username format (Telegram usernames are 5-32 chars, alphanumeric + underscore)
+                    if 5 <= len(username) <= 32 and username.replace('_', '').isalnum():
+                        usernames.append(username.lower())
+                    else:
+                        logging.warning(f"Invalid username format on line {line_num}: {line}")
+        
+        return {"user_ids": user_ids, "usernames": usernames}
+        
     except Exception as e:
         logging.error(f"Error loading allowed users: {e}")
         return {"user_ids": [], "usernames": []}
@@ -183,6 +218,41 @@ def format_medicine_list(medicines: List[dict]) -> str:
 def format_reminder_message(medicine_name: str, dosage: str, time: str) -> str:
     """Format reminder message for users"""
     return f"💊 {time} - Час прийняти {medicine_name} ({dosage})"
+
+async def check_user_access(update, context) -> bool:
+    """Check if user is authorized to use the bot"""
+    try:
+        user = update.effective_user
+        if not user:
+            return False
+        
+        # Load allowed users
+        allowed = load_allowed_users()
+        user_ids = allowed["user_ids"]
+        usernames = allowed["usernames"]
+        
+        # Check user ID
+        if user.id in user_ids:
+            return True
+        
+        # Check username
+        if user.username and user.username.lower() in usernames:
+            return True
+        
+        # Log unauthorized access attempt
+        logging.warning(f"Unauthorized access attempt: User ID {user.id}, Username: {user.username}")
+        
+        # Send unauthorized message
+        await update.message.reply_text(
+            "❌ Вибачте, у вас немає доступу до цього бота.\n"
+            "Зв'яжіться з адміністратором для отримання доступу."
+        )
+        
+        return False
+        
+    except Exception as e:
+        logging.error(f"Error checking user access: {e}")
+        return False
 
 def setup_logging(log_path: str = "logs/bot.log", level: str = "INFO"):
     """Setup logging configuration"""

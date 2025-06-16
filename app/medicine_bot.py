@@ -9,10 +9,10 @@ import pytz
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 from database import Database
-from handlers.auth import check_user_access
 from utils.helpers import (
     load_bot_token, load_config, setup_logging, get_timezone_list, 
-    format_medicine_list, validate_time_format, validate_dosage, format_reminder_message
+    format_medicine_list, validate_time_format, validate_dosage, format_reminder_message,
+    check_user_access
 )
 
 # Conversation states

@@ -1,6 +1,10 @@
 # Bot configuration and sensitive data
 app/config/bot_token.txt
+app/config/bot_token.txt.enc
 app/config/allowed_users.txt
+app/config/allowed_users.txt.enc
+app/config/secret.key
+app/config/secret.key.backup.*
 
 # Database files
 app/data/database.db
