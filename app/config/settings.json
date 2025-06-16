@@ -1,0 +1,8 @@
+{
+  "bot_name": "Медицинський Помічник",
+  "max_users": 20,
+  "log_level": "INFO",
+  "backup_retention_days": 30,
+  "reminder_retry_minutes": 5,
+  "database_path": "data/database.db"
+}
